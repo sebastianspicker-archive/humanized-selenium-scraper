@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "humanized-selenium-scraper"
+version = "0.1.0"
+description = "Human-like Google searching and subpage BFS via Selenium."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["selenium>=4.10"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.8", "bandit>=1.7", "pip-audit>=2.7"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["chrome_profile", "scraper.log", "input.csv", "output.csv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = false
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+ignore_missing_imports = true

@@ -1,0 +1,57 @@
+### Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+### Virtualenv
+.venv/
+venv/
+ENV/
+.env
+.env.*
+.python-version
+
+### Packaging (build artifacts; not needed in repo)
+build/
+dist/
+*.egg
+*.egg-info/
+
+### Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+coverage/
+.nox/
+.tox/
+test-results/
+junit.xml
+junit-*.xml
+
+### Project outputs
+scraper.log
+*.log
+chrome_profile/
+input.csv
+output.csv
+
+### Local docs (findings/logs/decisions)
+DECISIONS.md
+FINDINGS.md
+LOG.md
+REFACTOR_PLAN.md
+PHYSICS_AUDIT.md
+validation.md
+
+### OS / Editors
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+.codex/

@@ -1,0 +1,110 @@
+# =============================================================================
+# HumanizedSeleniumScraper -- Example Search Spec
+# =============================================================================
+#
+# Copy this file and adjust it for your use case. Pass it to the scraper with:
+#
+#   python -m humanized_selenium_scraper --spec my_spec.toml --header --input input.csv
+#
+# All values shown below are the defaults. Uncomment and change only what you
+# need -- the scraper fills in defaults for any section or key you omit.
+#
+# Placeholders like {name} and {city} refer to columns in your input CSV.
+# Make sure the column names in your CSV match the placeholders in the templates.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# [selenium] -- Browser and retry settings
+# -----------------------------------------------------------------------------
+[selenium]
+
+# Which Google country domain to search (e.g. google.de for Germany).
+google_domain = "google.com"
+
+# Restart the browser after this many searches to clear state.
+# Set to 0 to never restart.
+restart_threshold = 30
+
+# How many times to retry a failed page load before skipping the row.
+max_retries = 3
+
+
+# -----------------------------------------------------------------------------
+# [search] -- How to build the Google query and what to extract
+# -----------------------------------------------------------------------------
+[search]
+
+# Python format string. Placeholders are replaced with values from each CSV row.
+# Example: for a CSV with columns "name" and "city", this becomes
+#   "Acme GmbH Berlin contact"
+query_template = "{name} {city} contact"
+
+# Whether to look for phone numbers and email addresses on matched pages.
+extract_phone = true
+extract_email = true
+
+
+# -----------------------------------------------------------------------------
+# [relevance] -- How to decide if a page is a good match
+# -----------------------------------------------------------------------------
+[relevance]
+
+# Keywords to search for in the page HTML. Placeholders are filled from the CSV row.
+# A page must mention these words enough times (see min_total_keyword_hits).
+keyword_templates = ["{name}", "contact", "imprint"]
+
+# Total number of keyword occurrences required across all keywords.
+# Lower = more lenient (accepts pages with fewer mentions).
+# Higher = stricter (requires keywords to appear many times).
+min_total_keyword_hits = 3
+
+# If true, the page must also contain the address (street/zip/city) from the CSV row.
+# Set to false if you only care about keyword matches.
+require_address = false
+
+# Uncomment the [relevance.address] section below to customize which CSV columns
+# hold the address parts. These defaults match the "contact" preset.
+#
+# [relevance.address]
+# street_field = "street"       # CSV column with the street name
+# zip_field    = "plz"          # CSV column with the postal/zip code
+# city_field   = "city"         # CSV column with the city name
+# min_score    = 2              # Minimum address score (0-3). 2 = zip+city must match.
+
+
+# -----------------------------------------------------------------------------
+# [url_filter] -- Which Google result URLs to visit
+# -----------------------------------------------------------------------------
+[url_filter]
+
+# "query_part": only visit domains that contain a word from the search query.
+#   This avoids visiting generic directories (e.g. yelp, facebook).
+# "any": visit any domain that passes the TLD and blacklist checks.
+domain_match = "query_part"
+
+# Only visit sites whose domain ends with one of these TLDs.
+allowed_tlds = [".de", ".com"]
+
+# Skip any domain that contains one of these words (social media, job boards, etc.).
+domain_keyword_blacklist = ["facebook", "instagram", "linkedin"]
+
+# When domain_match = "query_part", ignore query words shorter than this.
+# Prevents false matches on short words like "AG" or "IT".
+min_query_part_len = 3
+
+
+# -----------------------------------------------------------------------------
+# [navigation] -- How deep to search
+# -----------------------------------------------------------------------------
+[navigation]
+
+# How many Google result links to evaluate per search.
+max_google_results = 20
+
+# How many links to follow on each visited page (for subpage discovery).
+max_links_per_page = 30
+
+# How many levels of subpages to explore on a matching site.
+# 0 = only check the landing page; 2 = follow links up to 2 levels deep.
+subpage_depth = 2
