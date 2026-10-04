@@ -8,10 +8,6 @@
 > to scrape Google or any site against its terms. Use it only with data and sites
 > you are authorised to access. See [`DISCLAIMER.md`](DISCLAIMER.md).
 
-> **Archived -- This project is no longer maintained.**
-> It was archived on 2026-02-12 and released as-is. No bug fixes, security patches, or new features will be added.
-> If you need active development, see the [Alternatives & Successors](#alternatives--successors) section below.
-
 A small, **dataset-agnostic** demonstration scraper. You bring any CSV dataset and
 tell the tool which columns to use; for each row it searches, visits the most
 relevant result, and writes the website, phone, and email it finds back to a new
@@ -298,12 +294,12 @@ For responsible disclosure see `SECURITY.md`.
 
 ## Alternatives & Successors
 
-> This project is archived. Consider these actively maintained alternatives:
+> Consider these actively maintained alternatives:
 
 | Project | Description | Link |
 |---------|-------------|------|
 | SerpAPI | Managed Google search API, no browser needed | [serpapi.com](https://serpapi.com) |
-| Playwright + stealth | Modern browser automation with anti-detection | [playwright.dev](https://playwright.dev) |
+| Playwright | Modern browser automation framework | [playwright.dev](https://playwright.dev) |
 | Apify | Cloud scraping platform with Google search actors | [apify.com](https://apify.com) |
 | ScraperAPI | Proxy-based search scraping service | [scraperapi.com](https://scraperapi.com) |
 
