@@ -88,8 +88,8 @@ sequenceDiagram
     Session->>Driver: safe_get(google_url)
     Driver->>Google: Navigate to Google
     Session->>Driver: click_cookie_consent_if_present()
-    Session->>Driver: human_type(search_box, query) ; submit
-    Session->>Driver: Wait results ; get links
+    Session->>Driver: human_type(search_box, query), then submit
+    Session->>Driver: Wait for results, then get links
     alt Link passes url_filter (is_relevant_url)
       Session->>Driver: safe_get(href)
       Driver->>Page: Visit candidate
