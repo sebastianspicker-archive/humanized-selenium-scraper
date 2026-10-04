@@ -41,17 +41,48 @@ chrome_profile/
 input.csv
 output.csv
 
-### Local docs (findings/logs/decisions)
+### Tests (not part of the published artifact)
+tests/
+conftest.py
+pytest.ini
+
+### Internal work: agent instructions and tool state
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.cursorrules
+.github/copilot-instructions.md
+.claude/
+.codex/
+.serena/
+.cursor/
+.aider*
+.continue/
+.windsurf/
+.mcp.json
+.mcp/
+.history/
+
+### Internal work: ledgers, logs and work-in-progress docs
+IMPROVEMENT_*.md
 DECISIONS.md
 FINDINGS.md
 LOG.md
 REFACTOR_PLAN.md
 PHYSICS_AUDIT.md
 validation.md
+docs/architecture.md
+docs/CODE_INSPECTION.md
+docs/adr/
+ADR*.md
+
+### Worktree directories
+.worktrees/
+worktrees/
+.claude/worktrees/
+.codex/worktrees/
 
 ### OS / Editors
 .DS_Store
 .idea/
 .vscode/
-.cursor/
-.codex/

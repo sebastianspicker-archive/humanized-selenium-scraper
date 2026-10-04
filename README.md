@@ -115,12 +115,6 @@ source .venv/bin/activate  # Linux/macOS
 python -m pip install .
 ```
 
-Development dependencies:
-
-```bash
-python -m pip install -e ".[dev]"
-```
-
 ## Quickstart
 
 ### 1. Prepare your input CSV
@@ -233,38 +227,9 @@ In this example, Widget Corp had no relevant result -- the row is preserved with
 - Query contents are redacted in logs (length and token count only).
 - Output data may include phone/email; handle it according to your privacy requirements.
 
-## Development & validation
-
-With the virtualenv activated (`source .venv/bin/activate`), the canonical gate is:
-
-```bash
-make ci
-```
-
-which runs formatting, lint, type-checking, and tests. The individual checks are:
-
-```bash
-ruff format --check .
-ruff check .
-mypy humanized_selenium_scraper
-pytest -q
-```
-
-Build (optional; installs the packaging tool first):
-
-```bash
-python -m pip install build
-python -m build
-```
-
-`make security` runs `bandit`, and `make dependency-audit` runs `pip-audit` against the
-installed environment. Tests run offline and do not launch a browser.
-
-Module layout, dependency direction, external contracts, and non-obvious decisions are documented in `docs/architecture.md`. Agent/operating instructions are in `AGENTS.md`.
-
 ## Security
 
-For responsible disclosure see `SECURITY.md`. Optional local checks: `pip-audit` (audits the installed environment), `bandit -r humanized_selenium_scraper -x tests --severity-level medium`.
+For responsible disclosure see `SECURITY.md`.
 
 ## Troubleshooting
 
