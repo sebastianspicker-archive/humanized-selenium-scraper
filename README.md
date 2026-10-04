@@ -1,15 +1,29 @@
 # HumanizedSeleniumScraper
 
+> ## ⚠️ Educational demonstration only
+>
+> This project is a **teaching example** of browser automation and HTML parsing.
+> **Automating Google Search violates Google's Terms of Service, and bypassing
+> anti-bot or other security mechanisms is prohibited.** Do not use this project
+> to scrape Google or any site against its terms. Use it only with data and sites
+> you are authorised to access. See [`DISCLAIMER.md`](DISCLAIMER.md).
+
 > **Archived -- This project is no longer maintained.**
 > It was archived on 2026-02-12 and released as-is. No bug fixes, security patches, or new features will be added.
 > If you need active development, see the [Alternatives & Successors](#alternatives--successors) section below.
 
-Automatically find websites, phone numbers, and email addresses for a list of businesses. You provide a CSV of company names and addresses; the scraper searches Google, visits the most relevant results, and writes the contact info it finds back to a new CSV.
+A small, **dataset-agnostic** demonstration scraper. You bring any CSV dataset and
+tell the tool which columns to use; for each row it searches, visits the most
+relevant result, and writes the website, phone, and email it finds back to a new
+CSV. Nothing about the input schema is hard-coded: with the default `generic`
+preset the search query is built from every value in the row, and you can override
+that with a template (or the `contact` preset) whenever you want.
 
 Under the hood it drives a real Chrome browser with human-like typing, pauses, and scrolling to reduce the chance of being blocked.
 
 ## Features
 
+- Dataset-agnostic: any CSV columns, with a template that maps them to a query
 - Human-like typing, pauses, and scrolling
 - Cookie banner handling with fallback selectors
 - URL filtering (TLD allowlist, domain keyword blacklist, query-part matching)
@@ -117,47 +131,69 @@ python -m pip install .
 
 ## Quickstart
 
-### 1. Prepare your input CSV
+### 1. Choose a dataset
 
-Create a file called `input.csv`. It can be either:
+You provide the data. Any CSV works -- it does not have to be company addresses.
+For example, a `dataset.csv` with a header row:
 
-- **With a header row** (recommended) -- column names in the first line:
-  ```
-  name,street,plz,city
-  Acme GmbH,Hauptstr. 1,10115,Berlin
-  Widget Corp,Marienplatz 5,80331,Munich
-  ```
+```
+topic,region
+electric cars,Norway
+solar panels,Spain
+```
 
-- **Without a header** -- the scraper assumes four columns by default: `name`, `street`, `plz`, `city`.
+or a set of business rows:
+
+```
+name,street,plz,city
+Acme GmbH,Hauptstr. 1,10115,Berlin
+Widget Corp,Marienplatz 5,80331,Munich
+```
+
+A header row is **recommended**: the scraper then takes the column names from the
+file. Without a header you must name the columns yourself with `--columns`
+(for example `--columns topic,region`).
 
 ### 2. Run the scraper
 
-If your CSV **has a header row**:
+With a header row:
 
 ```bash
-python -m humanized_selenium_scraper --header --input input.csv --output output.csv
+python -m humanized_selenium_scraper --header --dataset dataset.csv --output output.csv
 ```
 
-If your CSV **has no header** (uses the default four columns):
+Without a header (name the columns explicitly):
 
 ```bash
-python -m humanized_selenium_scraper --input input.csv --output output.csv
+python -m humanized_selenium_scraper --dataset dataset.csv --columns topic,region --output output.csv
 ```
 
-A Chrome window will open and begin searching. Results are written to `output.csv` as they are found.
+`--input` is accepted as an alias for `--dataset`, so older commands keep working.
+
+By default the scraper uses the **`generic`** preset: the query for each row is
+every value in that row joined together, and a page is relevant when it mentions
+any word from that query. A Chrome window will open and begin searching; results
+are written to `output.csv` as they are found.
 
 ### 3. Other examples
 
-Use the **keywords** preset when your CSV has `query` and `keyword` columns instead of address data:
+The **`contact`** preset restores the address-aware behaviour: it builds queries
+from `name`/`street`/`plz`/`city` and checks the page for a matching address:
 
 ```bash
-python -m humanized_selenium_scraper --preset keywords --columns query,keyword --input input.csv
+python -m humanized_selenium_scraper --preset contact --header --dataset companies.csv
+```
+
+Use the **`keywords`** preset when your CSV has `query` and `keyword` columns:
+
+```bash
+python -m humanized_selenium_scraper --preset keywords --columns query,keyword --dataset input.csv
 ```
 
 Use a **TOML spec file** for full control over search, filtering, and relevance settings (see `example_search_spec.toml`):
 
 ```bash
-python -m humanized_selenium_scraper --spec example_search_spec.toml --header --input input.csv
+python -m humanized_selenium_scraper --spec example_search_spec.toml --header --dataset input.csv
 ```
 
 Show all available options:
@@ -174,15 +210,36 @@ Settings can be provided via CLI flags, a TOML spec file, or both. CLI flags ove
 
 | Flag | What it does | Example |
 |------|-------------|---------|
+| `--dataset` / `--input` | Choose the dataset (CSV) to process (default: `input.csv`) | `--dataset companies.csv` |
+| `--header` | Treat the first CSV row as column names | `--header` |
+| `--columns` | Column names for a headerless CSV (required without `--header`) | `--columns topic,region` |
+| `--delimiter` | CSV field delimiter (default: `,`) | `--delimiter ';'` |
+| `--preset` | Built-in preset: `generic` (default), `contact`, or `keywords` | `--preset contact` |
 | `--google-domain` | Google country domain to search | `--google-domain google.de` |
 | `--query-template` | Python format string that builds the search query from CSV columns | `--query-template '{name} {city} kontakt'` |
 | `--keyword-template` | Word(s) the page must contain to be considered relevant (repeatable) | `--keyword-template '{name}' --keyword-template 'contact'` |
 | `--require-address` | Only accept pages that also mention the street/zip/city | `--require-address` |
 | `--no-require-address` | Accept pages based on keywords alone (no address check) | `--no-require-address` |
 | `--no-phone` / `--no-email` | Skip phone or email extraction | `--no-phone` |
+| `--no-notice` | Suppress the educational-use notice printed at startup | `--no-notice` |
 | `--verbose` / `-v` | Print detailed debug output | `-v` |
 | `--log-file` | Where to write the log (default: `scraper.log`) | `--log-file run1.log` |
 | `--version` | Print version and exit | `--version` |
+
+### Datasets and presets
+
+The input schema is yours. A **preset** is just a starting `SearchSpec`; you can
+always refine it with the flags above or a TOML file.
+
+| Preset | Query built from | Relevance | Use when |
+|--------|------------------|-----------|----------|
+| `generic` (default) | Every value in the row (or your `--query-template`) | Page must mention a word from the query | Any dataset; you are not scraping addresses |
+| `contact` | `{name} {street} {plz} {city}` | Keywords plus an optional address match | Business/contact lookups |
+| `keywords` | `{query}` | A page must contain the `keyword` column value | Keyword-driven searches |
+
+`{__row__}` is a special placeholder that expands to all values in the row, which
+is what makes the `generic` preset work with any CSV. You can mix it with other
+columns, e.g. `--query-template '{__row__} contact'`.
 
 ### TOML spec file
 
@@ -252,7 +309,19 @@ For responsible disclosure see `SECURITY.md`.
 
 ## Disclaimer
 
-Automated scraping of Google may violate Google’s Terms of Service. Use responsibly and ensure you have permission to scrape target sites. This project is for educational purposes and does not provide any guarantee of success or access.
+**This project is an educational demonstration of browser automation and must not
+be used to scrape Google or to bypass security mechanisms.**
+
+Automating Google Search violates Google's Terms of Service, and bypassing
+anti-bot, CAPTCHA, rate-limiting, or other security controls is prohibited and may
+be unlawful. Use this project only on data and sites you own or are explicitly
+authorised to access and only where their terms permit automated access. You are
+solely responsible for your use of this code and for complying with all applicable
+terms and laws.
+
+See [`DISCLAIMER.md`](DISCLAIMER.md) for the full statement. If you need data at
+scale, use an official API such as the Google Custom Search JSON API, or a licensed
+data provider.
 
 ## License
 

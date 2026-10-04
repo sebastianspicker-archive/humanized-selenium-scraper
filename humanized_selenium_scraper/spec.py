@@ -20,6 +20,10 @@ MAX_GOOGLE_RESULTS = 500
 MAX_LINKS_PER_PAGE = 500
 MAX_SUBPAGE_DEPTH = 10
 
+# Sentinel template that expands to every value of the row. It lets the
+# data-agnostic "generic" preset work with any CSV without a fixed schema.
+ROW_TEMPLATE = "{__row__}"
+
 
 @dataclass(frozen=True)
 class AddressSpec:
@@ -68,6 +72,18 @@ class SearchSpec:
     @staticmethod
     def presets() -> dict[str, SearchSpec]:
         return {
+            # Data-agnostic default: the query is every value in the row, and a
+            # page counts as relevant when it mentions any term from that query.
+            # Any CSV works without a fixed schema.
+            "generic": SearchSpec(
+                query_template=ROW_TEMPLATE,
+                relevance=RelevanceSpec(
+                    keyword_templates=(),
+                    min_total_keyword_hits=1,
+                    require_address=False,
+                ),
+                url_filter=UrlFilterSpec(domain_match="any"),
+            ),
             "contact": SearchSpec(),
             "keywords": SearchSpec(
                 query_template="{query}",
@@ -209,6 +225,8 @@ class SearchSpec:
 
 
 def render_template(template: str, row: dict[str, str]) -> str:
+    if template == ROW_TEMPLATE:
+        return " ".join(value for value in row.values() if value)
     try:
         return template.format_map(row)
     except KeyError as exc:

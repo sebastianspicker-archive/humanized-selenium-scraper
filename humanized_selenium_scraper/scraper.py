@@ -20,7 +20,7 @@ from .extract_selenium import parse_phone_email_deep
 from .human import do_infinite_scrolling, human_type, random_pause
 from .relevance import evaluate_page
 from .selenium_ops import click_cookie_consent_if_present, safe_get
-from .spec import SearchSpec, render_templates
+from .spec import SearchSpec, render_template, render_templates
 from .url_filter import is_relevant_url
 
 # Common legal/contact link labels (DE + EN) for subpage link priority
@@ -40,10 +40,18 @@ def link_priority(element: Any) -> int:
 
 
 def page_is_relevant(page_source: str, row: dict[str, str], spec: SearchSpec) -> bool:
-    """Evaluate a page source against the row's relevance rules."""
+    """Evaluate a page source against the row's relevance rules.
+
+    When no keyword templates are configured (the data-agnostic default), the
+    words of the rendered query are used as keywords, so a page counts as
+    relevant when it mentions any term from the row.
+    """
     keywords = [
         keyword.lower() for keyword in render_templates(spec.relevance.keyword_templates, row)
     ]
+    if not keywords:
+        query = render_template(spec.query_template, row)
+        keywords = [word.lower() for word in query.split() if word]
     return evaluate_page(
         page_source,
         keywords=keywords,

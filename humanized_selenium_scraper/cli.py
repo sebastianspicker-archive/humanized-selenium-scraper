@@ -13,6 +13,17 @@ from .config import ScraperConfig
 from .csv_io import parse_columns_arg
 from .spec import SearchSpec, clamp_navigation
 
+# Shown on every run unless --no-notice is passed. This project is an
+# educational demonstration; it must not be used to scrape Google or to bypass
+# security mechanisms against their terms of service.
+EDUCATIONAL_NOTICE = (
+    "EDUCATIONAL USE ONLY. This project is a demonstration of browser automation. "
+    "Automating Google Search violates Google's Terms of Service, and bypassing "
+    "anti-bot or other security mechanisms is prohibited. Use it only on data and "
+    "sites you are authorised to access, and comply with all applicable terms and "
+    "laws. See DISCLAIMER.md."
+)
+
 
 def _get_version() -> str:
     try:
@@ -24,14 +35,18 @@ def _get_version() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Search Google for each row in a CSV and extract website, phone, and email.\n"
+            "Search Google for each row in a CSV dataset and extract website, phone, "
+            "and email.\n"
+            "The scraper is dataset-agnostic: you choose the dataset and how its "
+            "columns become a search query.\n"
             "Uses a real Chrome browser with human-like behavior to reduce blocking."
         ),
         epilog=(
             "Examples:\n"
-            "  python -m humanized_selenium_scraper --header --input companies.csv"
+            "  python -m humanized_selenium_scraper --header --dataset companies.csv"
             " --output results.csv\n"
-            "  python -m humanized_selenium_scraper --spec my_spec.toml --header --input in.csv\n"
+            "  python -m humanized_selenium_scraper --spec my_spec.toml --header"
+            " --dataset in.csv\n"
             "\n"
             "See example_search_spec.toml for a full configuration template."
         ),
@@ -39,7 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_get_version()}")
     parser.add_argument(
-        "--input", default="input.csv", help="Path to the input CSV file (default: input.csv)."
+        "--dataset",
+        "--input",
+        dest="dataset",
+        default="input.csv",
+        help=(
+            "Path to the dataset (CSV) to process. '--input' is accepted as an alias "
+            "(default: input.csv)."
+        ),
     )
     parser.add_argument(
         "--output", default="output.csv", help="Path for the output CSV file (default: output.csv)."
@@ -60,14 +82,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--columns",
-        default="name,street,plz,city",
-        help="Column names for headerless CSVs, comma-separated (default: name,street,plz,city).",
+        default="",
+        help=(
+            "Column names for a headerless CSV, comma-separated "
+            "(e.g. --columns name,city). Required when --header is not used."
+        ),
     )
     parser.add_argument(
         "--preset",
         choices=sorted(SearchSpec.presets().keys()),
-        default="contact",
-        help="Built-in preset: 'contact' (find sites) or 'keywords' (search by keyword).",
+        default="generic",
+        help=(
+            "Built-in preset: 'generic' (data-agnostic; the query is every value in "
+            "the row), 'contact' (find business sites/contacts), or 'keywords' "
+            "(search by keyword)."
+        ),
     )
     parser.add_argument(
         "--spec", help="Path to a TOML configuration file (see example_search_spec.toml)."
@@ -171,6 +200,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show detailed debug output (useful for troubleshooting).",
     )
+    parser.add_argument(
+        "--no-notice",
+        action="store_true",
+        help="Suppress the educational-use notice printed at startup.",
+    )
     return parser
 
 
@@ -272,6 +306,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(log_file=args.log_file, verbose=args.verbose)
 
+    if not args.no_notice:
+        print(EDUCATIONAL_NOTICE, file=sys.stderr)
+
     spec = SearchSpec.presets()[args.preset]
     config = ScraperConfig(google_domain=args.google_domain or "google.com")
 
@@ -286,9 +323,9 @@ def main(argv: list[str] | None = None) -> int:
     # dataclasses.replace() skips __post_init__, so re-validate the final domain.
     config.validate()
 
-    columns = parse_columns_arg(args.columns) if not args.header else None
+    columns = parse_columns_arg(args.columns) if (not args.header and args.columns) else None
     return run_batch(
-        input_file=Path(args.input),
+        input_file=Path(args.dataset),
         output_file=Path(args.output),
         config=config,
         spec=spec,

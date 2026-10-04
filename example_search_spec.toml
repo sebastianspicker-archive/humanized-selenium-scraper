@@ -2,9 +2,19 @@
 # HumanizedSeleniumScraper -- Example Search Spec
 # =============================================================================
 #
+# EDUCATIONAL USE ONLY. Automating Google Search violates Google's Terms of
+# Service, and bypassing anti-bot or other security mechanisms is prohibited.
+# This project is a demonstration; use it only with data and sites you are
+# authorised to access. See DISCLAIMER.md.
+#
 # Copy this file and adjust it for your use case. Pass it to the scraper with:
 #
-#   python -m humanized_selenium_scraper --spec my_spec.toml --header --input input.csv
+#   python -m humanized_selenium_scraper --spec my_spec.toml --header --dataset input.csv
+#
+# The scraper is dataset-agnostic: choose any CSV, then map its columns to a
+# query and to relevance keywords. The built-in "generic" preset uses the
+# special placeholder {__row__}, which expands to every value in the row, and
+# treats a page as relevant when it mentions any word from the query.
 #
 # This is a worked example, not a list of defaults: several values below (for
 # instance keyword_templates, min_total_keyword_hits, and require_address)
@@ -52,7 +62,9 @@ search_results_timeout_s = 8
 # Python format string. Placeholders are replaced with values from each CSV row.
 # Example: for a CSV with columns "name" and "city", this becomes
 #   "Acme GmbH Berlin contact"
-# The built-in default is "{name} {street} {plz} {city}".
+# The special placeholder {__row__} expands to every value in the row.
+# The generic preset uses "{__row__}"; the contact preset uses
+# "{name} {street} {plz} {city}".
 query_template = "{name} {city} contact"
 
 # Whether to look for phone numbers and email addresses on matched pages.
@@ -67,18 +79,19 @@ extract_email = true
 
 # Keywords to search for in the page HTML. Placeholders are filled from the CSV row.
 # A page must mention these words enough times (see min_total_keyword_hits).
-# The built-in default is ["{name}", "contact", "address"].
+# The contact preset uses ["{name}", "contact", "address"]. The generic preset
+# leaves this empty and instead uses the words of the rendered query.
 keyword_templates = ["{name}", "contact", "imprint"]
 
 # Total number of keyword occurrences required across all keywords.
 # Lower = more lenient (accepts pages with fewer mentions).
 # Higher = stricter (requires keywords to appear many times).
-# The built-in default is 6; this example is more lenient.
+# The contact preset uses 6; the generic preset uses 1. This example is more lenient.
 min_total_keyword_hits = 3
 
 # If true, the page must also contain the address (street/zip/city) from the CSV row.
 # Set to false if you only care about keyword matches.
-# The built-in default is true.
+# The contact preset uses true; the generic preset uses false.
 require_address = false
 
 # Uncomment the [relevance.address] section below to customize which CSV columns
