@@ -15,7 +15,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import ScraperConfig
-from .exceptions import SkipEntryError
 from .human import random_pause
 
 
@@ -95,79 +94,46 @@ def click_cookie_consent_if_present(driver) -> None:
     logging.info("No matching cookie consent selector found (not critical).")
 
 
-def safe_get(
-    driver,
-    config: ScraperConfig,
-    url: str,
-    *,
-    attempt: int = 1,
-    raise_on_failure: bool | None = None,
-) -> bool:
-    """Safely navigate to a URL with retry logic.
+def safe_get(driver, config: ScraperConfig, url: str) -> bool:
+    """Navigate to ``url``, returning whether the page loaded.
 
-    Args:
-        driver: Selenium WebDriver instance.
-        config: Scraper configuration with retry settings.
-        url: URL to navigate to.
-        attempt: Current attempt number (used for retry coordination).
-        raise_on_failure: If True, raise SkipEntryError on failure; if False, return False.
-            If None (default), raises only when attempt==1 for backward compatibility.
-
-    Returns:
-        True if navigation succeeded, False otherwise (when raise_on_failure=False).
-
-    Raises:
-        SkipEntryError: When navigation fails and raise_on_failure=True (or None with attempt==1).
+    Returns False without navigating for URLs the scraper refuses to load:
+    PDFs, non-http(s) schemes, and pages whose certificate is invalid. Transient
+    load failures are retried up to ``config.max_retries`` times, after which
+    False is returned. Callers decide whether a failed load should skip the row
+    or just the candidate (see ``scraper.Session.search``).
     """
     if url.lower().strip().endswith(".pdf"):
         logging.info("SKIP PDF => %s", url)
         return False
 
-    # Only navigate to http/https to prevent javascript:, file:, etc.
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
+    if urlparse(url).scheme not in ("http", "https"):
         logging.info("SKIP non-http(s) URL => %s", url)
         return False
 
-    # Determine whether to raise or return False on failure
-    # Default behavior: raise on first call (attempt==1), return on nested calls
-    should_raise = raise_on_failure if raise_on_failure is not None else (attempt == 1)
-
-    # If this is a nested call with attempt > 1, we don't want to retry *again* here
-    # if it's already being handled by a higher-level loop.
-    # However, safe_get is used both for Google (retried locally) and subpages.
-    # We'll use a local loop if attempt=1, otherwise single try.
-    max_local_tries = config.max_retries if attempt == 1 else 1
-
-    for i in range(max_local_tries):
+    for attempt in range(config.max_retries):
         try:
-            current_url = driver.current_url
-            if current_url == url:
-                # Already there
+            if driver.current_url == url:
                 return True
-
             driver.get(url)
             # Wait for body but also check for typical error indicators
             WebDriverWait(driver, config.element_wait_timeout_s).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             return True
+        except TimeoutException:
+            logging.warning(
+                "Timeout => attempt=%s/%s, url=%s", attempt + 1, config.max_retries, url
+            )
         except WebDriverException as exc:
-            msg = str(exc)
-            if "ERR_CERT_DATE_INVALID" in msg:
+            if "ERR_CERT_DATE_INVALID" in str(exc):
                 logging.info("Skipping insecure (cert) => %s", url)
                 return False
-            logging.warning("WebDriverException => %s (attempt=%s/%s)", msg, i + 1, max_local_tries)
-            if i + 1 >= max_local_tries:
-                if should_raise:
-                    raise SkipEntryError(f"Could not load page after {config.max_retries} retries: {url}") from exc
-                return False
+            logging.warning(
+                "WebDriverException => %s (attempt=%s/%s)", exc, attempt + 1, config.max_retries
+            )
+
+        if attempt + 1 < config.max_retries:
             random_pause(1, 1.5)
-        except TimeoutException as exc:
-            logging.warning("Timeout => attempt=%s/%s, url=%s", i + 1, max_local_tries, url)
-            if i + 1 >= max_local_tries:
-                if should_raise:
-                    raise SkipEntryError(f"Page load timed out after {config.max_retries} retries: {url}") from exc
-                return False
-            random_pause(1, 1.5)
+
     return False

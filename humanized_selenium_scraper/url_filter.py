@@ -40,6 +40,18 @@ DEFAULT_DOMAIN_KEYWORD_BLACKLIST = (
     ".pdf",
 )
 
+# How to match a candidate URL against the query. Single source of truth, also
+# used to validate configuration at load time.
+VALID_DOMAIN_MATCH_MODES = ("query_part", "any")
+
+
+def validate_domain_match(domain_match: str) -> str:
+    """Return ``domain_match`` if it is a known mode, otherwise raise ValueError."""
+    if domain_match not in VALID_DOMAIN_MATCH_MODES:
+        allowed = ", ".join(repr(mode) for mode in VALID_DOMAIN_MATCH_MODES)
+        raise ValueError(f"Unknown domain_match mode: {domain_match!r}. Must be one of: {allowed}.")
+    return domain_match
+
 
 def is_relevant_url(
     query: str,
@@ -66,13 +78,9 @@ def is_relevant_url(
     if any(keyword in host for keyword in domain_keyword_blacklist):
         return False
 
+    validate_domain_match(domain_match)
     if domain_match == "any":
         return True
-    if domain_match != "query_part":
-        raise ValueError(
-            f"Unknown domain_match mode: {domain_match!r}. "
-            "Must be 'query_part' or 'any'."
-        )
 
     # Use a set for query parts to avoid redundant checks
     # Filter out empty or too-short tokens

@@ -50,8 +50,7 @@ def _validate_google_domain(domain: str) -> str:
     if normalized not in ALLOWED_GOOGLE_DOMAINS:
         allowed = ", ".join(sorted(ALLOWED_GOOGLE_DOMAINS))
         raise ValueError(
-            f"Invalid Google domain: {domain!r}.\n"
-            f"Use --google-domain with one of these: {allowed}"
+            f"Invalid Google domain: {domain!r}.\nUse --google-domain with one of these: {allowed}"
         )
     return normalized
 

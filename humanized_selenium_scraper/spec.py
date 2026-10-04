@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from .config import ScraperConfig
-from .url_filter import DEFAULT_ALLOWED_TLDS, DEFAULT_DOMAIN_KEYWORD_BLACKLIST
+from .url_filter import (
+    DEFAULT_ALLOWED_TLDS,
+    DEFAULT_DOMAIN_KEYWORD_BLACKLIST,
+    validate_domain_match,
+)
 
 # Limit spec file size to avoid DoS from huge/malicious files
 MAX_SPEC_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB
@@ -31,6 +35,10 @@ class UrlFilterSpec:
     allowed_tlds: tuple[str, ...] = DEFAULT_ALLOWED_TLDS
     domain_keyword_blacklist: tuple[str, ...] = DEFAULT_DOMAIN_KEYWORD_BLACKLIST
     min_query_part_len: int = 3
+
+    def __post_init__(self) -> None:
+        # Fail fast on a typo'd mode instead of silently emptying every output row.
+        validate_domain_match(self.domain_match)
 
 
 @dataclass(frozen=True)
@@ -76,16 +84,18 @@ class SearchSpec:
     def from_toml(cls, path: Path) -> tuple[SearchSpec, ScraperConfig]:
         if not path.exists():
             raise ValueError(
-                f"Spec file not found: {path}\n"
-                "Check the path passed to --spec. You can copy example_search_spec.toml as a starting point."
+                f"Spec file not found: {path}\nCopy example_search_spec.toml as a starting point."
             )
         try:
             size = path.stat().st_size
         except OSError as e:
-            raise ValueError(f"Cannot read spec file (permission denied or disk error): {path}") from e
+            raise ValueError(
+                f"Cannot read spec file (permission denied or disk error): {path}"
+            ) from e
         if size > MAX_SPEC_FILE_BYTES:
             raise ValueError(
-                f"Spec file is too large ({size:,} bytes, maximum is {MAX_SPEC_FILE_BYTES:,} bytes): {path}"
+                f"Spec file is too large ({size:,} bytes, "
+                f"maximum is {MAX_SPEC_FILE_BYTES:,} bytes): {path}"
             )
         try:
             raw = path.read_text(encoding="utf-8")

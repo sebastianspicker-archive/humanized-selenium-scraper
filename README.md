@@ -14,7 +14,7 @@ Under the hood it drives a real Chrome browser with human-like typing, pauses, a
 - Cookie banner handling with fallback selectors
 - URL filtering (TLD allowlist, domain keyword blacklist, query-part matching)
 - Relevance scoring with keywords and optional address matching
-- Subpage BFS on the same domain
+- Subpage search on the same domain
 - Phone and email extraction (including basic obfuscation patterns)
 - Retry logic with skip-on-repeated-failure
 - Incremental CSV output (header written once, rows appended)
@@ -33,7 +33,7 @@ flowchart LR
     Filter[Filter result URLs]
     Visit[Visit candidate page]
     Eval[Relevance check]
-    Sub[Optional subpage BFS]
+    Sub[Optional subpage search]
     Extract[Extract phone/email]
     Retry[Retry/skip handling]
   end
@@ -53,7 +53,7 @@ flowchart LR
   Extract --> OutCSV
 ```
 
-The scraper processes one input row at a time and keeps browser behavior intentionally human-like (typing, pauses, and scrolling). Result URLs are filtered and only relevant pages continue to optional subpage BFS and extraction. If navigation or relevance checks fail, the row falls into retry/skip handling and the run proceeds to the next row.
+The scraper processes one input row at a time and keeps browser behavior intentionally human-like (typing, pauses, and scrolling). Result URLs are filtered, and a candidate page — or a relevant same-domain subpage up to `subpage_depth` — must pass the relevance check before extraction. Failed page loads are retried; a candidate that still fails is skipped so the next result can be tried, while an unreachable Google page skips the row and the run proceeds to the next one.
 
 ## Lifecycle
 
@@ -66,7 +66,7 @@ sequenceDiagram
   participant Google
   participant Page
 
-  CLI->>Run: main then run(input_file, output_file, config, spec)
+  CLI->>Run: main then run_batch(input_file, output_file, config, spec)
   Run->>Session: Session.create(config, profile_dir)
   Session->>Driver: create_driver(config, profile_dir)
   Run->>Run: Read CSV header / columns
@@ -83,21 +83,21 @@ sequenceDiagram
     alt Link passes url_filter (is_relevant_url)
       Session->>Driver: safe_get(href)
       Driver->>Page: Visit candidate
-      Session->>Session: evaluate_page() ? search_subpages()
+      Session->>Session: find_relevant_page() (landing, then subpages)
       Session->>Driver: parse_phone_email_deep()
       Session-->>Run: target_url, phone, email
     else Skip or retry
       Session-->>Run: None, None, None or SkipEntryError
       Run->>Run: log reason and continue
     end
-    Run->>Run: _write_row(output_file, header, row_out)
+    Run->>Run: CsvResultWriter.write_row(row_out)
   end
 
   Run->>Session: session.close()
   Session->>Driver: driver.quit()
 ```
 
-Each run starts from CLI config and creates one reusable Selenium session. For every CSV row, the scraper builds a query, executes search, evaluates candidates, and writes exactly one output row. Failure paths are explicit: rejected links, navigation errors, and repeated failures return `None`/`SkipEntryError`, get logged, and the loop continues without terminating the batch.
+Each run starts from CLI config and creates one reusable Selenium session. For every CSV row, the scraper builds a query, executes search, evaluates candidates, and writes exactly one output row. Failure paths are explicit: rejected or unreachable candidates are skipped so the next result can be tried, an unreachable Google page skips the row (`SkipEntryError`), and every path still produces exactly one output row without terminating the batch.
 
 ## Requirements
 
@@ -112,7 +112,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
 # Windows: .venv\Scripts\activate
 
-python -m pip install -r requirements.txt
+python -m pip install .
 ```
 
 Development dependencies:
@@ -221,6 +221,12 @@ Foo AG,Hamburg,https://foo-ag.de/kontakt,+49 40 9876543,kontakt@foo-ag.de
 
 In this example, Widget Corp had no relevant result -- the row is preserved with empty contact fields.
 
+> **Note:** cells that begin with `=`, `+`, `-`, `@`, a tab, or a carriage return
+> are prefixed with an apostrophe to stop spreadsheets from treating them as
+> formulas (CSV injection). A phone number such as `+49 30 1234567` is therefore
+> written as `'+49 30 1234567` in the file. Spreadsheets display it without the
+> apostrophe.
+
 ## Logging & Privacy
 
 - Logs are written to the file given by `--log-file` (default: `scraper.log`) and also to stderr. Use `--verbose` or `-v` for debug logging.
@@ -229,31 +235,36 @@ In this example, Widget Corp had no relevant result -- the row is preserved with
 
 ## Development & validation
 
-Quick check (format, lint, tests):
+With the virtualenv activated (`source .venv/bin/activate`), the canonical gate is:
 
 ```bash
-ruff format .
+make ci
+```
+
+which runs formatting, lint, type-checking, and tests. The individual checks are:
+
+```bash
+ruff format --check .
 ruff check .
+mypy humanized_selenium_scraper
 pytest -q
 ```
 
-Type checking:
+Build (optional; installs the packaging tool first):
 
 ```bash
-mypy humanized_selenium_scraper
-```
-
-Build (optional):
-
-```bash
+python -m pip install build
 python -m build
 ```
 
-Tests run offline and do not launch a browser. See `Makefile` for more targets (`make ci`, `make test`, etc.).
+`make security` runs `bandit`, and `make dependency-audit` runs `pip-audit` against the
+installed environment. Tests run offline and do not launch a browser.
+
+Module layout, dependency direction, external contracts, and non-obvious decisions are documented in `docs/architecture.md`. Agent/operating instructions are in `AGENTS.md`.
 
 ## Security
 
-For responsible disclosure see `SECURITY.md`. Optional local checks: `pip-audit -r requirements.txt`, `bandit -r humanized_selenium_scraper -x tests --severity-level medium`.
+For responsible disclosure see `SECURITY.md`. Optional local checks: `pip-audit` (audits the installed environment), `bandit -r humanized_selenium_scraper -x tests --severity-level medium`.
 
 ## Troubleshooting
 
@@ -261,7 +272,7 @@ For responsible disclosure see `SECURITY.md`. Optional local checks: `pip-audit 
 - Captchas/throttling: increase delays, reduce query volume, and keep concurrency low.
 - Cookie banners: update selectors in `click_cookie_consent_if_present()` if needed, including iframe handling.
 - Element not interactable: use waits and the robust click helper (`click_element_robust`).
-- Timeouts: increase page load timeout or reduce BFS depth/links per page.
+- Timeouts: increase page load timeout or reduce subpage depth/links per page.
 
 ## Alternatives & Successors
 

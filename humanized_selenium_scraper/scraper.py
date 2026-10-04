@@ -28,6 +28,7 @@ IMPO_KEYWORDS = ("impressum", "kontakt", "datenschutz", "imprint", "contact", "p
 
 
 def link_priority(element: Any) -> int:
+    """Sort key: contact/legal links first, everything else second."""
     try:
         text = (element.text or "").lower()
         href = (element.get_attribute("href") or "").lower()
@@ -35,59 +36,15 @@ def link_priority(element: Any) -> int:
             return 0
     except Exception as exc:
         logging.debug("link_priority failed: %s", exc)
-        return 1
     return 1
 
 
-def search_subpages(
-    driver: Any,
-    config: ScraperConfig,
-    *,
-    base_url: str,
-    row: dict[str, str],
-    spec: SearchSpec,
-    max_depth: int,
-    query: str,
-    attempt: int = 1,
-    _visited: set[str] | None = None,
-) -> str | None:
-    """Recursively search subpages for relevant content.
-
-    Args:
-        driver: Selenium WebDriver instance.
-        config: Scraper configuration.
-        base_url: URL to search.
-        row: Data row for template rendering.
-        spec: Search specification.
-        max_depth: Maximum recursion depth.
-        query: Search query.
-        attempt: Current attempt number for retry logic.
-        _visited: Set of already visited URLs (shared across recursive calls).
-
-    Returns:
-        URL of a relevant page, or None if not found.
-    """
-    # Initialize visited set on first call, then share it across all recursive calls
-    if _visited is None:
-        _visited = set()
-
-    if base_url.lower().endswith(".pdf"):
-        logging.info("Skip PDF subpage => %s", base_url)
-        return None
-
-    # Check if we've already visited this URL to prevent infinite loops
-    if base_url in _visited:
-        logging.debug("Already visited => %s", base_url)
-        return None
-    _visited.add(base_url)
-
-    if not safe_get(driver, config, base_url, attempt=attempt):
-        return None
-
-    do_infinite_scrolling(driver, max_scroll=3, pause_s=1.2)
-    page_source = driver.page_source
-    keywords = [k.lower() for k in render_templates(spec.relevance.keyword_templates, row)]
-    if evaluate_page(
+def page_is_relevant(page_source: str, row: dict[str, str], spec: SearchSpec) -> bool:
+    """Evaluate a page source against the row's relevance rules."""
+    keywords = [
+        keyword.lower() for keyword in render_templates(spec.relevance.keyword_templates, row)
+    ]
+    return evaluate_page(
         page_source,
         keywords=keywords,
         min_keyword_hits=spec.relevance.min_total_keyword_hits,
@@ -96,60 +53,77 @@ def search_subpages(
         plz=row.get(spec.relevance.address.zip_field, ""),
         city=row.get(spec.relevance.address.city_field, ""),
         address_min_score=spec.relevance.address.min_score,
-    ):
-        return base_url
+    )
+
+
+def _element_href(element: Any) -> str | None:
+    try:
+        return element.get_attribute("href")
+    except StaleElementReferenceException:
+        logging.warning("Stale link => skipping")
+        return None
+
+
+def find_relevant_page(
+    driver: Any,
+    config: ScraperConfig,
+    *,
+    url: str,
+    row: dict[str, str],
+    spec: SearchSpec,
+    max_depth: int,
+    _visited: set[str] | None = None,
+) -> str | None:
+    """Return a relevant URL at ``url`` or, failing that, in its same-domain subtree.
+
+    The starting URL is checked first so an already-relevant page is returned
+    as-is. Otherwise same-domain links (contact/legal pages first) are followed
+    depth-first up to ``max_depth`` levels. Link-level load failures just skip
+    that link.
+    """
+    if _visited is None:
+        _visited = set()
+    if url.lower().endswith(".pdf") or url in _visited:
+        return None
+    _visited.add(url)
+
+    if not safe_get(driver, config, url):
+        return None
+
+    do_infinite_scrolling(driver, max_scroll=3, pause_s=1.2)
+    if page_is_relevant(driver.page_source, row, spec):
+        return url
 
     if max_depth <= 0:
         return None
 
-    max_links = spec.navigation.max_links_per_page
-
-    # Refresh elements to avoid stale state if possible
     try:
-        links = driver.find_elements(By.TAG_NAME, "a")[:max_links]
+        links = driver.find_elements(By.TAG_NAME, "a")[: spec.navigation.max_links_per_page]
     except StaleElementReferenceException as exc:
-        if attempt >= config.max_retries:
-            raise SkipEntryError("Subpage links became stale after too many retries; skipping this row.") from exc
+        logging.warning("Subpage links became stale => %s", exc)
         return None
 
-    links_sorted = sorted(links, key=link_priority)
-
-    for link in links_sorted:
-        href = None
-        try:
-            href = link.get_attribute("href")
-        except StaleElementReferenceException:
-            logging.warning("Stale subpage link => skipping link in attempt=%s", attempt)
-            # We don't raise here, just skip this link and try the next.
-            # If we need this link, Higher-level retry will catch it eventually.
+    domain = urlparse(url).netloc.lower()
+    for link in sorted(links, key=link_priority):
+        href = _element_href(link)
+        if not href or href.lower().endswith(".pdf"):
             continue
-
-        if not href:
-            continue
-        if href.lower().endswith(".pdf"):
-            logging.info("Skip PDF => %s", href)
-            continue
-
-        domain = urlparse(href).netloc.lower()
-        if domain != urlparse(base_url).netloc.lower():
+        if urlparse(href).netloc.lower() != domain:
             continue
         if href in _visited:
             continue
 
-        # Pass the shared visited set to recursive call
-        sub_url = search_subpages(
+        found = find_relevant_page(
             driver,
             config,
-            base_url=href,
+            url=href,
             row=row,
             spec=spec,
             max_depth=max_depth - 1,
-            query=query,
-            attempt=attempt,
             _visited=_visited,
         )
-        if sub_url is not None:
-            return sub_url
+        if found is not None:
+            return found
 
     return None
 
@@ -186,13 +160,23 @@ class Session:
             logging.debug("Driver quit during restart failed (non-fatal): %s", exc)
         self.driver = new_driver
 
-    def search(self, *, query: str, row: dict[str, str], spec: SearchSpec, attempt: int = 1):
+    def search(
+        self, *, query: str, row: dict[str, str], spec: SearchSpec
+    ) -> tuple[str | None, str | None, str | None]:
+        """Search Google for one row and return (relevant URL, phone, email).
+
+        An unreachable Google page skips the whole row (SkipEntryError). A failed
+        candidate or subpage load only skips that candidate. Returns empty results
+        when no candidate is relevant.
+        """
         self.maybe_restart_driver(profile_dir=self.config.chrome_profile_root)
         self.counter += 1
 
         google_url = f"https://www.{self.config.google_domain}/"
-        if not safe_get(self.driver, self.config, google_url, attempt=attempt):
-            return None, None, None
+        if not safe_get(self.driver, self.config, google_url):
+            raise SkipEntryError(
+                f"Could not load {google_url}. Google may be unreachable, blocking, or offline."
+            )
 
         random_pause(1, 1.5)
         try:
@@ -200,18 +184,39 @@ class Session:
         except Exception as exc:
             logging.debug("Cookie consent click failed (non-fatal): %s", exc)
 
+        if not self._submit_search(query):
+            raise SkipEntryError(
+                "Google did not return a usable search page for this query; skipping the row."
+            )
+
+        for href in self._collect_result_hrefs(spec):
+            if not self._is_candidate_url(query, href, spec):
+                continue
+
+            target_url = self._find_target(href, row, spec)
+            if target_url is None:
+                continue
+            if not safe_get(self.driver, self.config, target_url):
+                continue
+
+            do_infinite_scrolling(self.driver, max_scroll=1, pause_s=1.0)
+            phone, email = self._extract(spec)
+            return target_url, phone, email
+
+        return None, None, None
+
+    def _submit_search(self, query: str) -> bool:
         try:
-            sb = WebDriverWait(self.driver, self.config.element_wait_timeout_s).until(
+            search_box = WebDriverWait(self.driver, self.config.element_wait_timeout_s).until(
                 EC.element_to_be_clickable((By.NAME, "q"))
             )
         except Exception as exc:
-            if attempt >= self.config.max_retries:
-                raise SkipEntryError("Could not find the Google search box after multiple retries. Google may be blocking or the page layout changed.") from exc
-            return None, None, None
+            logging.warning("Google search box not found: %s", exc)
+            return False
 
-        human_type(sb, query)
+        human_type(search_box, query)
         random_pause(0.5, 1.0)
-        sb.send_keys(Keys.RETURN)
+        search_box.send_keys(Keys.RETURN)
         random_pause(1, 2)
 
         try:
@@ -219,86 +224,59 @@ class Session:
                 EC.presence_of_element_located((By.ID, "search"))
             )
         except Exception as exc:
-            if attempt >= self.config.max_retries:
-                raise SkipEntryError("Google did not return search results after multiple retries. You may be rate-limited or a CAPTCHA is blocking the search.") from exc
-            return None, None, None
+            logging.warning("Google did not return search results: %s", exc)
+            return False
 
         do_infinite_scrolling(self.driver, max_scroll=2, pause_s=1.0)
-        glinks = self.driver.find_elements(By.XPATH, "//a[contains(@href,'http')]")
-        top = glinks[: spec.navigation.max_google_results]
+        return True
+
+    def _collect_result_hrefs(self, spec: SearchSpec) -> list[str]:
+        """Return the candidate result hrefs from the current Google results page."""
+        result_links = self.driver.find_elements(By.XPATH, "//a[contains(@href,'http')]")
+        top = result_links[: spec.navigation.max_google_results]
         random.shuffle(top)
 
-        # Extract all hrefs into plain strings so Selenium element references
-        # aren't needed after navigation (avoids StaleElementReferenceException).
-        all_hrefs: list[str] = []
+        hrefs: list[str] = []
         for link in top:
-            try:
-                href = link.get_attribute("href")
-                if href:
-                    all_hrefs.append(href)
-            except StaleElementReferenceException as exc:
-                if attempt >= self.config.max_retries:
-                    raise SkipEntryError(f"Google result links became stale after retries; skipping this row. Detail: {exc}") from exc
-                logging.warning("Stale google link => skipping (attempt=%s)", attempt)
-                continue
+            href = _element_href(link)
+            if href:
+                hrefs.append(href)
+        return hrefs
 
-        for href in all_hrefs:
-            if href.lower().endswith(".pdf"):
-                logging.info("skip pdf => %s", href)
-                continue
+    def _is_candidate_url(self, query: str, href: str, spec: SearchSpec) -> bool:
+        return is_relevant_url(
+            query,
+            href,
+            allowed_tlds=spec.url_filter.allowed_tlds,
+            domain_keyword_blacklist=spec.url_filter.domain_keyword_blacklist,
+            domain_match=spec.url_filter.domain_match,
+            min_query_part_len=spec.url_filter.min_query_part_len,
+        )
 
-            if not is_relevant_url(
-                query,
-                href,
-                allowed_tlds=spec.url_filter.allowed_tlds,
-                domain_keyword_blacklist=spec.url_filter.domain_keyword_blacklist,
-                domain_match=spec.url_filter.domain_match,
-                min_query_part_len=spec.url_filter.min_query_part_len,
+    def _find_target(self, href: str, row: dict[str, str], spec: SearchSpec) -> str | None:
+        """Return a relevant URL for a candidate, exploring subpages when configured."""
+        if spec.navigation.subpage_depth <= 0:
+            if safe_get(self.driver, self.config, href) and page_is_relevant(
+                self.driver.page_source, row, spec
             ):
-                continue
+                return href
+            return None
 
-            if not safe_get(self.driver, self.config, href, attempt=attempt):
-                continue
+        return find_relevant_page(
+            self.driver,
+            self.config,
+            url=href,
+            row=row,
+            spec=spec,
+            max_depth=spec.navigation.subpage_depth,
+        )
 
-            do_infinite_scrolling(self.driver, max_scroll=3, pause_s=1.2)
-            ps = self.driver.page_source
-            keywords = [k.lower() for k in render_templates(spec.relevance.keyword_templates, row)]
-            if evaluate_page(
-                ps,
-                keywords=keywords,
-                min_keyword_hits=spec.relevance.min_total_keyword_hits,
-                require_address=spec.relevance.require_address,
-                street=row.get(spec.relevance.address.street_field, ""),
-                plz=row.get(spec.relevance.address.zip_field, ""),
-                city=row.get(spec.relevance.address.city_field, ""),
-                address_min_score=spec.relevance.address.min_score,
-            ):
-                sub_url = None
-                if spec.navigation.subpage_depth > 0:
-                    sub_url = search_subpages(
-                        self.driver,
-                        self.config,
-                        base_url=href,
-                        row=row,
-                        spec=spec,
-                        max_depth=spec.navigation.subpage_depth,
-                        query=query,
-                        attempt=attempt,
-                    )
-                target_url = sub_url or href
-                if safe_get(self.driver, self.config, target_url, attempt=attempt):
-                    do_infinite_scrolling(self.driver, max_scroll=1, pause_s=1.0)
-                    phone, email = None, None
-                    if spec.extract_phone or spec.extract_email:
-                        phone, email = parse_phone_email_deep(self.driver)
-                        if not spec.extract_phone:
-                            phone = None
-                        if not spec.extract_email:
-                            email = None
-                    return target_url, phone, email
-
-            # Return to Google results so the next iteration starts from the right page
-            safe_get(self.driver, self.config, google_url, attempt=attempt)
-            random_pause(0.7, 1.5)
-
-        return None, None, None
+    def _extract(self, spec: SearchSpec) -> tuple[str | None, str | None]:
+        if not (spec.extract_phone or spec.extract_email):
+            return None, None
+        phone, email = parse_phone_email_deep(self.driver)
+        if not spec.extract_phone:
+            phone = None
+        if not spec.extract_email:
+            email = None
+        return phone, email

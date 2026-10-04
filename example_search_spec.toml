@@ -6,8 +6,11 @@
 #
 #   python -m humanized_selenium_scraper --spec my_spec.toml --header --input input.csv
 #
-# All values shown below are the defaults. Uncomment and change only what you
-# need -- the scraper fills in defaults for any section or key you omit.
+# This is a worked example, not a list of defaults: several values below (for
+# instance keyword_templates, min_total_keyword_hits, and require_address)
+# deliberately differ from the built-in defaults, and the comments say so. The
+# scraper fills in defaults for any section or key you omit, so delete everything
+# and keep only what you want to override.
 #
 # Placeholders like {name} and {city} refer to columns in your input CSV.
 # Make sure the column names in your CSV match the placeholders in the templates.
@@ -29,6 +32,17 @@ restart_threshold = 30
 # How many times to retry a failed page load before skipping the row.
 max_retries = 3
 
+# Where the throwaway Chrome profile is stored. Defaults to "chrome_profile"
+# next to the working directory. Comment out to use the default.
+chrome_profile_root = "chrome_profile"
+
+# Timeouts, in seconds. The first two are Selenium's page-load and implicit waits;
+# the last two back the scraper's explicit element/result waits.
+page_load_timeout_s = 20
+implicit_wait_s = 5
+element_wait_timeout_s = 10
+search_results_timeout_s = 8
+
 
 # -----------------------------------------------------------------------------
 # [search] -- How to build the Google query and what to extract
@@ -38,6 +52,7 @@ max_retries = 3
 # Python format string. Placeholders are replaced with values from each CSV row.
 # Example: for a CSV with columns "name" and "city", this becomes
 #   "Acme GmbH Berlin contact"
+# The built-in default is "{name} {street} {plz} {city}".
 query_template = "{name} {city} contact"
 
 # Whether to look for phone numbers and email addresses on matched pages.
@@ -52,15 +67,18 @@ extract_email = true
 
 # Keywords to search for in the page HTML. Placeholders are filled from the CSV row.
 # A page must mention these words enough times (see min_total_keyword_hits).
+# The built-in default is ["{name}", "contact", "address"].
 keyword_templates = ["{name}", "contact", "imprint"]
 
 # Total number of keyword occurrences required across all keywords.
 # Lower = more lenient (accepts pages with fewer mentions).
 # Higher = stricter (requires keywords to appear many times).
+# The built-in default is 6; this example is more lenient.
 min_total_keyword_hits = 3
 
 # If true, the page must also contain the address (street/zip/city) from the CSV row.
 # Set to false if you only care about keyword matches.
+# The built-in default is true.
 require_address = false
 
 # Uncomment the [relevance.address] section below to customize which CSV columns
@@ -84,9 +102,12 @@ require_address = false
 domain_match = "query_part"
 
 # Only visit sites whose domain ends with one of these TLDs.
+# The built-in default allows .de, .com, .net, .org, .info, .eu, .co, .at, .ch,
+# .shop, .auto, .website, and .online.
 allowed_tlds = [".de", ".com"]
 
 # Skip any domain that contains one of these words (social media, job boards, etc.).
+# The built-in default is a longer list (facebook, instagram, linkedin, indeed, ...).
 domain_keyword_blacklist = ["facebook", "instagram", "linkedin"]
 
 # When domain_match = "query_part", ignore query words shorter than this.

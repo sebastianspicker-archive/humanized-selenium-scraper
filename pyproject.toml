@@ -5,13 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "humanized-selenium-scraper"
 version = "0.1.0"
-description = "Human-like Google searching and subpage BFS via Selenium."
+description = "Human-like Google searching and subpage search via Selenium."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["selenium>=4.10"]
+dependencies = ["selenium>=4.10,<5"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.8", "bandit>=1.7", "pip-audit>=2.7"]
+# Dev tools are pinned exactly: they gate CI (ruff formatting/lint, mypy, tests,
+# bandit, pip-audit), so an unpinned upgrade must not turn the gate red. Bump a
+# pin deliberately, re-run `make ci security dependency-audit`, and commit.
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.10",
+    "mypy==2.4.0",
+    "bandit==1.9.4",
+    "pip-audit==2.10.1",
+]
 
 [tool.ruff]
 line-length = 100
@@ -23,7 +32,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 python_version = "3.12"
